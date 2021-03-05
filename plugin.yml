@@ -1,0 +1,17 @@
+name: MentionSound
+version: 0.0.1
+main: DavyCraft648\MentionSound\MentionSound
+api: 3.14.0
+website: https://github.com/DavyCraft648/MentionSound
+description: A sound notifier when someone mention you
+author: DavyCraft648
+commands:
+  mentionsound:
+    description: Open MentionSound Settings
+    aliases:
+      - mentsound
+    permission: mentionsound.command
+    permission-message: "§cYou do not have permission to use this command!"
+permissions:
+  mentionsound.command:
+    default: true
