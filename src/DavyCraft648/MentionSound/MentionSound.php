@@ -16,7 +16,7 @@ use pocketmine\utils\TextFormat;
 class MentionSound extends PluginBase implements Listener
 {
 	/** @var array */
-	private array $soundList = [];
+	private $soundList = [];
 
 	public function onEnable()
 	{
