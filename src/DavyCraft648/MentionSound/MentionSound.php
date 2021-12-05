@@ -2,23 +2,21 @@
 
 namespace DavyCraft648\MentionSound;
 
-use jojoe77777\FormAPI\CustomForm;
 use pocketmine\command\{Command, CommandSender};
-use jojoe77777\FormAPI\SimpleForm;
+use dktapps\pmforms\{CustomForm, CustomFormResponse, element\Input, element\Toggle, FormIcon, MenuForm, MenuOption};
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerChatEvent;
 use pocketmine\network\mcpe\protocol\PlaySoundPacket;
-use pocketmine\Player;
+use pocketmine\player\Player;
 use pocketmine\plugin\PluginBase;
-use pocketmine\utils\Config;
-use pocketmine\utils\TextFormat;
+use pocketmine\utils\{Config, TextFormat};
 
 class MentionSound extends PluginBase implements Listener
 {
-	/** @var array */
-	private $soundList = [];
+	/** @var string[] */
+	private array $soundList = [];
 
-	public function onEnable()
+	public function onEnable(): void
 	{
 		$this->saveResource("soundlist.yml");
 		$soundConfig = new Config($this->getDataFolder() . "soundlist.yml", Config::YAML);
@@ -28,74 +26,94 @@ class MentionSound extends PluginBase implements Listener
 
 	public function onCommand(CommandSender $sender, Command $command, string $label, array $args): bool
 	{
-		if (strtolower($command->getName()) === "mentionsound") {
-			if (!($sender instanceof Player)) return false;
-			/** @var Player $player */
-			$player = $sender;
-			if (isset($args[0])) {
-				if (strtolower($args[0]) === "settings") {
-					$this->settingsForm($player);
-					return true;
-				} elseif (strtolower($args[0]) === "soundlist") {
-					$this->soundListForm($player);
-					return true;
-				}
+		if (!($sender instanceof Player)) return false;
+		/** @var Player $player */
+		$player = $sender;
+		if (isset($args[0])) {
+			if (mb_strtolower($args[0]) === "settings") {
+				$this->settingsForm($player);
+				return true;
+			} elseif (mb_strtolower($args[0]) === "soundlist") {
+				$this->soundListForm($player);
+				return true;
 			}
-			$this->helpForm($player);
 		}
+		$this->helpForm($player);
 		return true;
 	}
 
 	public function helpForm(Player $player)
 	{
-		$form = new SimpleForm(function (Player $player, $data = null) {
-			if ($data === null) return;
-			if ($data === "settings") $this->settingsForm($player);
-			elseif ($data === "soundList") $this->soundListForm($player);
-		});
-		$form->setTitle("MentionSound");
-		$form->addButton("Settings", 0, "textures/ui/settings_glyph_color_2x", "settings");
-		$form->addButton("Sound List", 0, "textures/ui/sound_glyph_2x", "soundList");
+		$form = new MenuForm(
+			"MentionSound",
+			"",
+			[
+				new MenuOption("Settings", new FormIcon("textures/ui/settings_glyph_color_2x", FormIcon::IMAGE_TYPE_PATH)),
+				new MenuOption("Sound List", new FormIcon("textures/ui/sound_glyph_2x", FormIcon::IMAGE_TYPE_PATH))
+			],
+			function(Player $player, int $selected) : void {
+				if ($selected === 0) {
+					$this->settingsForm($player);
+				} elseif ($selected === 1) {
+					$this->soundListForm($player);
+				}
+			}
+		);
 		$player->sendForm($form);
 	}
 
 	private function soundListForm(Player $player)
 	{
-		$form = new SimpleForm(function () {
-		});
-		$form->setTitle("Sound List");
-		$form->setContent(implode("\n", $this->soundList));
+		$form = new MenuForm(
+			"Sound List",
+			implode("\n", $this->soundList),
+			[],
+			function(Player $player, int $selected) : void {}
+		);
 		$player->sendForm($form);
 	}
 
 	private function settingsForm(Player $player)
 	{
 		$userSettings = $this->getUserSettings($player->getName());
-		$form = new CustomForm(function (Player $player, $data = null) use ($userSettings) {
-			if (!is_array($data)) return;
-			if (trim($data["nameMentionSound"]) !== "" and !in_array(trim($data["nameMentionSound"]), $this->soundList)) {
-				$player->sendMessage(TextFormat::RED . "Sound {$data["nameMentionSound"]} not found");
-				return;
+		$form = new CustomForm(
+			"MentionSound Settings",
+			[
+				new Toggle("nameMention", "@{$player->getDisplayName()} Mention", $userSettings->get("nameMention")),
+				new Input("nameMentionSound", "@{$player->getDisplayName()} Mention Sound", $userSettings->get("nameMentionSound"), $userSettings->get("nameMentionSound")),
+				new Toggle("hereMention", "@here Mention", $userSettings->get("hereMention")),
+				new Input("hereMentionSound", "@here Mention Sound", $userSettings->get("hereMentionSound"), $userSettings->get("hereMentionSound")),
+				new Input("pitch", "Pitch", $userSettings->get("pitch"), $userSettings->get("pitch")),
+			],
+			function(Player $player, CustomFormResponse $response) use ($userSettings) : void {
+				$nameMentionSound = $response->getString("nameMentionSound");
+				if (!empty($nameMentionSound) and !in_array($nameMentionSound, $this->soundList)) {
+					$player->sendMessage(TextFormat::RED . "Sound $nameMentionSound not found");
+					return;
+				}
+
+				$hereMentionSound = $response->getString("hereMentionSound");
+				if (!empty($hereMentionSound) and !in_array($hereMentionSound, $this->soundList)) {
+					$player->sendMessage(TextFormat::RED . "Sound $hereMentionSound not found");
+					return;
+				}
+
+				$pitch = $response->getString("pitch");
+				if (!is_numeric($response->getString("pitch"))) {
+					$player->sendMessage(TextFormat::RED . "Pitch must be a number");
+					return;
+				}
+
+				$nameMentionSound = empty($nameMentionSound) ? $userSettings->get("nameMentionSound") : $nameMentionSound;
+				$hereMentionSound = empty($hereMentionSound) ? $userSettings->get("hereMentionSound") : $hereMentionSound;
+				$this->setUserSettings(
+					$player->getName(),
+					$response->getBool("nameMention"), $response->getBool("hereMention"),
+					$nameMentionSound, $hereMentionSound, (float) $pitch
+				);
+				$player->sendMessage(TextFormat::GREEN . "Your Settings was successfully saved");
 			}
-			if (trim($data["hereMentionSound"]) !== "" and !in_array($data["hereMentionSound"], $this->soundList)) {
-				$player->sendMessage(TextFormat::RED . "Sound {$data["hereMentionSound"]} not found");
-				return;
-			}
-			if (!is_numeric($data["pitch"])) {
-				$player->sendMessage(TextFormat::RED . "Pitch must be a number");
-				return;
-			}
-			$nameMentionSound = trim($data["nameMentionSound"]) === "" ? $userSettings->get("nameMentionSound") : $data["nameMentionSound"];
-			$hereMentionSound = trim($data["hereMentionSound"]) === "" ? $userSettings->get("hereMentionSound") : $data["hereMentionSound"];
-			$this->setUserSettings($player->getName(), $data["nameMention"], $data["hereMention"], $nameMentionSound, $hereMentionSound, (float) $data["pitch"]);
-			$player->sendMessage(TextFormat::GREEN . "Your Settings was successfully saved");
-		});
-		$form->setTitle("MentionSound Settings");
-		$form->addToggle("@{$player->getDisplayName()} Mention", $userSettings->get("nameMention"), "nameMention");
-		$form->addInput("@{$player->getDisplayName()} Mention Sound", $userSettings->get("nameMentionSound"), $userSettings->get("nameMentionSound"), "nameMentionSound");
-		$form->addToggle("@here Mention", $userSettings->get("hereMention"), "hereMention");
-		$form->addInput("@here Mention Sound", $userSettings->get("hereMentionSound"), $userSettings->get("hereMentionSound"), "hereMentionSound");
-		$form->addInput("Pitch", $userSettings->get("pitch"), $userSettings->get("pitch"), "pitch");
+		);
 		$player->sendForm($form);
 	}
 
@@ -117,26 +135,26 @@ class MentionSound extends PluginBase implements Listener
 
 	/**
 	 * @param PlayerChatEvent $event
-	 * @ignoreCancelled true
 	 */
 	public function onChat(PlayerChatEvent $event): void
 	{
-		if (strpos($event->getMessage(), "@") !== false) {
+		if (str_contains($event->getMessage(), "@")) {
 			foreach ($this->getServer()->getOnlinePlayers() as $player) {
 				$userSettings = $this->getUserSettings($player->getName());
-				$pk = new PlaySoundPacket();
-				$pk->x = $player->x;
-				$pk->y = $player->y;
-				$pk->z = $player->z;
-				$pk->volume = 1.0;
-				$pk->pitch = (float) $userSettings->get("pitch");
-				if (strpos($event->getMessage(), "@{$player->getDisplayName()}") !== false and $userSettings->get("nameMention")) {
-					$pk->soundName = (string) $userSettings->get("nameMentionSound");
-					$player->dataPacket($pk);
+				$pos = $player->getPosition();
+				if (str_contains($event->getMessage(), "@{$player->getDisplayName()}") and $userSettings->get("nameMention")) {
+					$player->getNetworkSession()->sendDataPacket(PlaySoundPacket::create(
+						(string) $userSettings->get("nameMentionSound"),
+						$pos->x, $pos->y, $pos->z,
+						1.0, (float) $userSettings->get("pitch")
+					));
 				}
-				elseif (strpos($event->getMessage(), "@here") !== false and $userSettings->get("hereMention")) {
-					$pk->soundName = (string) $userSettings->get("hereMentionSound");
-					$player->dataPacket($pk);
+				elseif (str_contains($event->getMessage(), "@here") and $userSettings->get("hereMention")) {
+					$player->getNetworkSession()->sendDataPacket(PlaySoundPacket::create(
+						(string) $userSettings->get("hereMentionSound"),
+						$pos->x, $pos->y, $pos->z,
+						1.0, (float) $userSettings->get("pitch")
+					));
 				}
 			}
 		}
